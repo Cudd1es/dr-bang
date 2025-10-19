@@ -3,6 +3,13 @@ from sentence_transformers.sparse_encoder import SparseEncoder
 import torch
 import os
 import re
+from tqdm import tqdm
+import numpy as np
+import chromadb
+import json
+from opensearchpy import OpenSearch
+import time
+
 
 DENSE_EMBEDDER_MODEL = "BAAI/bge-base-zh-v1.5"
 SPARSE_EMBEDDER_MODEL = "opensearch-project/opensearch-neural-sparse-encoding-doc-v2-distill"
@@ -101,7 +108,7 @@ def encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder):
     dense_vecs = dense_encoder.encode(text)
     sparse_vecs = sparse_encoder.encode(text)
     result = []
-    for i, chunk in enumerate(chunks):
+    for i, chunk in tqdm(enumerate(chunks), total=len(chunks), desc="Encoding Chunks"):
         result.append({
             "chunk_id": chunk.get("chunk_id"),
             "dense_embedding": dense_vecs[i],
@@ -115,22 +122,121 @@ def encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder):
         })
     return result
 
+# tmp
+def encode_chunks_with_metadata_2(chunks, dense_encoder, sparse_encoder=None):
+    texts = [join_chunk_text(chunk["text"]) for chunk in chunks]
+    dense_vecs = dense_encoder.encode(texts)
+    if sparse_encoder is not None:
+        sparse_vecs = sparse_encoder.encode(texts)
+    result = []
+    for i, chunk in enumerate(chunks):
+        entry = {
+            "chunk_id": chunk.get("chunk_id"),
+            "dense_embedding": dense_vecs[i],
+            "text": texts[i],
+            "eventName": chunk.get("eventName"),
+            "chapterTitle": chunk.get("chapterTitle"),
+            "story_type": chunk.get("story_type"),
+            "start_idx": chunk.get("start_idx"),
+            "end_idx": chunk.get("end_idx"),
+        }
+        if sparse_encoder is not None:
+            entry["sparse_embedding"] = sparse_vecs[i]
+        result.append(entry)
+    return result
+#!tmp
+
+
+# save dense embedding to chroma vector database
+def save_chunks_to_chroma(embedded_chunk, chroma_db_dir="./chroma_db", collection_name="bangdream"):
+    client = chromadb.PersistentClient(path=chroma_db_dir)
+    collection = client.get_or_create_collection(collection_name)
+    ids = []
+    documents = []
+    embeddings = []
+    metadata = []
+
+    for entry in embedded_chunk:
+        ids.append(entry["chunk_id"])
+        documents.append(entry["text"])
+        embeddings.append(entry["dense_embedding"].tolist() if isinstance(entry["dense_embedding"], np.ndarray) else entry["dense_embedding"])
+        meta = {k: v for k, v in entry.items() if k not in ["chunk_id", "dense_embedding", "sparse_embedding", "text"]}
+        metadata.append(meta)
+
+    batch_size = 64
+    for i in range(0, len(ids), batch_size):
+        collection.add(
+            ids=ids[i:i + batch_size],
+            documents=documents[i:i + batch_size],
+            embeddings=embeddings[i:i + batch_size],
+            metadatas=metadata[i:i + batch_size]
+        )
+    print(f"saved {len(ids)} chunks to {collection_name}")
+
+# save sparse embedding to OpenSearch
+def store_sparse_chunk(index_name, chunk, client):
+    sparse_tensor = chunk["sparse_embedding"].coalesce()
+    indices = sparse_tensor.indices().squeeze().tolist()
+    values = sparse_tensor.values().tolist()
+    doc = {
+        "chunk_id": chunk["chunk_id"],
+        "text": chunk["text"],
+        "eventName": chunk.get("eventName"),
+        "chapterTitle": chunk.get("chapterTitle"),
+        "story_type": chunk.get("story_type"),
+        "start_idx": chunk.get("start_idx"),
+        "end_idx": chunk.get("end_idx"),
+        "sparse_embedding": {
+            "indices": indices,
+            "values": values
+        }
+    }
+    resp = client.index(index=index_name, body=doc)
+    return resp
+
+def bulk_store_sparse_chunks(index_name, chunk_list, client):
+    for chunk in chunk_list:
+        store_sparse_chunk(index_name, chunk, client)
+    print(f"Saved {len(chunk_list)} sparse chunks to {index_name}")
+
+def read_jsonl_in_batches(file_path, batch_size=64):
+    batch = []
+    with open(file_path, 'r', encoding='utf8') as f:
+        for line in f:
+            if line.strip():
+                batch.append(json.loads(line))
+            if len(batch) == batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
+
 if __name__ == "__main__":
-    chunks = [
-        {"text": ["纱夜: 是吗。那告辞了",
-                  "亚子: ……喂。燐燐，那、那个人拿着的是…… 吉他盒吧？ 她在玩乐队吧？真好啊，亚子也想组乐队……！",
-                  "燐子: （小亚子经常会说起 自己组乐队的姐姐呢…… 乐队……对我来说是无法想象的世界……）",
-                  "亚子: 燐燐，该走了！ 今天我有点想严格按照日程表来呢", "燐子: 啊。嗯……"], "eventName": "",
-         "chapterTitle": "第1话: 绝不妥协的完美乐队", "story_type": "band",
-         "chunk_id": "band_story_22_merged.json_26_30", "start_idx": 26, "end_idx": 30},
-        {"text": ["有咲: （奥泽同学…… 加油……！！！）", "美咲: ……啊哈、哈哈哈…… ……也就是说，我想说的是，那个~~",
-                  "美咲: 请多指教，或者应该说…… 今后也请多多关照……！", "美咲: 花、花咲川女子学园……学生会会长…… 奥泽美咲……",
-                  "美咲: （哈啊~哈啊~~）"], "eventName": "Main Story", "chapterTitle": "第１话: 乘上春风",
-         "story_type": "main", "chunk_id": "main_full.json_30_34", "start_idx": 30, "end_idx": 34}
+    chunk_files = [
+        "./chunks/band_chunks.jsonl",
+        "./chunks/card_chunks.jsonl",
+        "./chunks/event_chunks.jsonl",
+        "./chunks/main_chunks.jsonl"
     ]
 
     dense_encoder = DenseTextEncoder(DENSE_EMBEDDER_MODEL)
     sparse_encoder = SparseTextEncoder(SPARSE_EMBEDDER_MODEL)
+
+    chunks = [
+        {"text": ["莉莎: 友希那☆ 我现在准备去新开的饰品店。 友希那也一起……",
+                  "友希那: 我没兴趣……今天入场时间早。我很赶时间", "莉莎: 等、等一下啦！ ……那至少陪我走一段……啊！",
+                  "其他班级的学生A: 对不起，撞到你了，没事吧？", "莉莎: 我才是不好意思！都怪我东张西望的……"],
+         "eventName": "", "chapterTitle": "第1话: 绝不妥协的完美乐队", "story_type": "band",
+         "chunk_id": "9b28e9938292486e9a61f2d1787bb828", "start_idx": 0, "end_idx": 4},
+        {"text": ["LAYER: 嗯，志愿调查表。 老师说我们已经三年级了，所以要填一下",
+                  "PAREO: PAREO这边好像也快发了…… 这么说来，我们都已经是三年级生了呢",
+                  "LAYER: 只不过一个是高中生一个是初中生", "PAREO: LAYER同学，您已经决定好毕业要做什么了吗？",
+                  "LAYER: 嗯~你要看我的志愿调查表吗？"], "eventName": "Main Story", "chapterTitle": "第２０话: 扣动扳机",
+         "story_type": "main", "chunk_id": "521f6b7e92c140298dece700959e46dc", "start_idx": 2, "end_idx": 6}
+
+    ]
+
+
     results = encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder)
     for entry in results:
         print(f"Chunk: {entry['chunk_id']}")
@@ -142,3 +248,26 @@ if __name__ == "__main__":
         print("---")
 
 
+
+    print(results[0])
+    
+    
+    # connect to OpenSearch
+    client = OpenSearch(
+        hosts=[{"host": "localhost", "port": 9200}],
+        http_compress=True
+    )
+    bulk_store_sparse_chunks("bangdream_sparse", results, client)
+
+"""
+    # save to chroma
+    start_time = time.time()
+    for file_path in chunk_files:
+        for batch in tqdm(read_jsonl_in_batches(file_path, batch_size=64), desc=f"Encoding {file_path}"):
+            # 只需要dense，可以让sparse_encoder=None并略过sparse_embedding
+            embedded = encode_chunks_with_metadata_2(batch, dense_encoder, sparse_encoder=None)
+            save_chunks_to_chroma(embedded)
+    end_time = time.time()
+    print(f"time used: {end_time - start_time}")
+
+"""

@@ -1,6 +1,7 @@
 import json
 import os
 from glob import glob
+import uuid
 
 WINDOW_SIZE = 5
 STEP = 2
@@ -31,7 +32,7 @@ def process_story_file(file_path, story_type, window_size=3, step=1):
                     "eventName": event_name,
                     "chapterTitle": chapter_title,
                     "story_type": story_type,
-                    "chunk_id": f"{os.path.basename(file_path)}_{start_idx}_{end_idx}",
+                    "chunk_id": f"{uuid.uuid4().hex}",
                     "start_idx": start_idx,
                     "end_idx": end_idx,
                 })
