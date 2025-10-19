@@ -71,5 +71,5 @@ if __name__ == "__main__":
 
     query_text = "乐奈喜欢什么?"
     query_vec = encode_query(encoder, query_text)
-    results = retrieve_docs(collection, query_vec, top_k=50)
+    results = retrieve_docs(collection, query_vec, top_k=20)
     reranked = query_rerank(reranker, query_text, results, top_n=5)

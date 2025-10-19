@@ -6,12 +6,24 @@ import uuid
 WINDOW_SIZE = 14
 STEP = 7
 
-def sliding_window_chunk(extracted_data, window_size=3, step=1):
+def sliding_window_chunk(extracted_data, window_size=3, step=1, min_chunk_size=1):
     chunks = []
     n = len(extracted_data)
+    if n <= window_size:
+        if n >= min_chunk_size:
+            chunks.append((0, n-1, extracted_data))
+        return chunks
+
     for i in range(0, n - window_size + 1, step):
         chunk = extracted_data[i:i+window_size]
         chunks.append((i, i+window_size-1, chunk))
+
+    last_covered = chunks[-1][1] if chunks else -1
+    if last_covered < n-1:
+        start = last_covered + 1
+        chunk = extracted_data[start:]
+        if len(chunk) >= min_chunk_size:
+            chunks.append((start, n-1, chunk))
     return chunks
 
 def process_story_file(file_path, story_type, window_size=3, step=1):
