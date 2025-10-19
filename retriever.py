@@ -20,7 +20,7 @@ def load_encoder(model_name=MODEL_NAME):
 
 def encode_query(encoder, query_text):
     """Encode query text into normalized embedding."""
-    return encoder.encode([query_text], normalize_embeddings=True)
+    return encoder.encode_query([query_text], normalize_embeddings=True)
 
 def retrieve_docs(collection, query_vec, top_k=5):
     """Retrieve documents from Chroma collection."""

@@ -47,22 +47,36 @@ class DenseTextEncoder:
     """
     output: numpy array
     """
-
     def __init__(self, model_name, normalize=True, device=None):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = SentenceTransformer(model_name)
         self.normalize = normalize
         self.cleaner = TextCleaner()
 
-    def encode(self, texts):
-        if isinstance(texts, str) or isinstance(texts, list) and isinstance(texts[0], str):
-            texts = [join_chunk_text(t) if isinstance(t, list) else t for t in
-                     (texts if isinstance(texts, list) else [texts])]
+    def _prepare_texts(self, texts):
+        """Support single string, list[str], or list[list[str]]"""
+        if isinstance(texts, str):
+            texts = [texts]
+        elif isinstance(texts, list):
+            if all(isinstance(t, str) for t in texts):
+                texts = [join_chunk_text(t) if isinstance(t, list) else t for t in texts]
+            elif all(isinstance(t, list) for t in texts):
+                texts = [join_chunk_text(t) for t in texts]
+            else:
+                raise ValueError("Input list must contain only str or list[str].")
         else:
-            raise ValueError("Input should be str or list of str/list.")
-
+            raise ValueError("Input must be str or list.")
         cleaned = [self.cleaner.clean(t) for t in texts]
-        output = self.model.encode(cleaned, convert_to_numpy=True, normalize_embeddings=self.normalize)
+        return cleaned
+
+    def encode_document(self, texts):
+        cleaned = self._prepare_texts(texts)
+        output = self.model.encode_document(cleaned, convert_to_numpy=True, normalize_embeddings=self.normalize)
+        return output
+
+    def encode_query(self, texts):
+        cleaned = self._prepare_texts(texts)
+        output = self.model.encode_query(cleaned, convert_to_numpy=True, normalize_embeddings=self.normalize)
         return output
 
 
@@ -70,22 +84,36 @@ class SparseTextEncoder:
     """
     output: torch tensor
     """
-
     def __init__(self, model_name, device=None):
         self.device = device or "cpu"
         self.encoder = SparseEncoder(model_name, device=self.device)
         self.cleaner = TextCleaner()
 
-    def encode(self, texts):
-        if isinstance(texts, str) or isinstance(texts, list) and isinstance(texts[0], str):
-            texts = [join_chunk_text(t) if isinstance(t, list) else t for t in
-                     (texts if isinstance(texts, list) else [texts])]
+    def _prepare_texts(self, texts):
+        """Support single string, list[str], or list[list[str]]"""
+        if isinstance(texts, str):
+            texts = [texts]
+        elif isinstance(texts, list):
+            if all(isinstance(t, str) for t in texts):
+                texts = [join_chunk_text(t) if isinstance(t, list) else t for t in texts]
+            elif all(isinstance(t, list) for t in texts):
+                texts = [join_chunk_text(t) for t in texts]
+            else:
+                raise ValueError("Input list must contain only str or list[str].")
         else:
-            raise ValueError("Input should be str or list of str/list.")
+            raise ValueError("Input must be str or list.")
         cleaned = [self.cleaner.clean(t) for t in texts]
-        output = self.encoder.encode(cleaned)
-        return output
+        return cleaned
 
+    def encode_document(self, texts):
+        """Encode for corpus indexing"""
+        cleaned = self._prepare_texts(texts)
+        return self.encoder.encode_document(cleaned)
+
+    def encode_query(self, texts):
+        """Encode for query retrieval"""
+        cleaned = self._prepare_texts(texts)
+        return self.encoder.encode_query(cleaned)
 
 def read_input(source):
     if os.path.exists(source):
@@ -114,12 +142,9 @@ def encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder):
     }
     """
     text = [join_chunk_text(chunk["text"]) for chunk in chunks]
-    dense_vecs = dense_encoder.encode(text)
-
+    dense_vecs = dense_encoder.encode_document(text)
     # placeholder, skip sparse encoding for now
-    # sparse_vecs = sparse_encoder.encode(text)
-    sparse_vecs = [None] * len(text)
-
+    #sparse_vecs = sparse_encoder.encode_document(text)
     result = []
     for i, chunk in enumerate(chunks):
 
@@ -131,10 +156,9 @@ def encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder):
         result.append({
             "chunk_id": chunk.get("chunk_id"),
             "dense_embedding": dense_vecs[i],
-
             # placeholder, skip sparse encoding for now
-            #"sparse_embedding": sparse_i,
             "sparse_embedding": None,
+            #"sparse_embedding": sparse_vecs[i],
             "text": text[i],
             "eventName": chunk.get("eventName"),
             "chapterTitle": chunk.get("chapterTitle"),
@@ -143,7 +167,6 @@ def encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder):
             "end_idx": chunk.get("end_idx"),
         })
     return result
-
 
 # save dense embedding to chroma vector database
 def save_chunks_to_chroma(embedded_chunk, collection):
@@ -159,7 +182,7 @@ def save_chunks_to_chroma(embedded_chunk, collection):
             entry["dense_embedding"].tolist() if isinstance(entry["dense_embedding"], np.ndarray) else entry[
                 "dense_embedding"])
         # currently do not store sparse embedding to chroma
-        meta = {k: v for k, v in entry.items() if k not in ["chunk_id", "dense_embedding", "sparse_embedding", "text"]}
+        meta = {k: v for k, v in entry.items() if k not in ["chunk_id", "dense_embedding","sparse_embedding", "text"]}
         metadata.append(meta)
 
     batch_size = 64
