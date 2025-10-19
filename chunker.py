@@ -3,8 +3,8 @@ import os
 from glob import glob
 import uuid
 
-WINDOW_SIZE = 5
-STEP = 2
+WINDOW_SIZE = 14
+STEP = 7
 
 def sliding_window_chunk(extracted_data, window_size=3, step=1):
     chunks = []
