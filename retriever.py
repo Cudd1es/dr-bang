@@ -65,6 +65,72 @@ def pretty_print_results(results):
         print(doc)
         print("-" * 40)
 
+# expend documents
+def get_all_chunks_in_chapter(collection, chapter_title, event_name=None, story_type=None):
+    filters = []
+    if chapter_title:
+        filters.append({"chapterTitle": chapter_title})
+    if story_type:
+        filters.append({"story_type": story_type})
+    if event_name:
+        filters.append({"eventName": event_name})
+    if len(filters) == 1:
+        filter_dict = filters[0]
+    elif len(filters) > 1:
+        filter_dict = {"$and": filters}
+    else:
+        filter_dict = {}
+    results = collection.get(where=filter_dict, include=["documents", "metadatas"])
+    chunk_list = []
+    for doc, meta in zip(results["documents"], results["metadatas"]):
+        chunk_list.append({
+            "text": doc,
+            **meta,
+        })
+    return chunk_list
+
+def find_adjacent_chunks(current_chunk, all_chunks):
+    start_idx = current_chunk['start_idx']
+    end_idx = current_chunk['end_idx']
+    prev_chunk, next_chunk = None, None
+    for chunk in all_chunks:
+        if chunk['end_idx'] == start_idx - 1:
+            prev_chunk = chunk
+        if chunk['start_idx'] == end_idx + 1:
+            next_chunk = chunk
+    return prev_chunk, next_chunk
+
+def expand_with_neighbors(reranked_docs, collection):
+    expanded_results = []
+    for doc, score, meta in reranked_docs:
+        print(meta)
+        chapter_title = meta.get("chapterTitle", "")
+        event_name = meta.get("eventName", "")
+        story_type = meta.get("story_type", None)
+        all_chunks = get_all_chunks_in_chapter(collection, chapter_title, event_name, story_type)
+        prev_chunk, next_chunk = find_adjacent_chunks(meta, all_chunks)
+        expanded_text = []
+        if prev_chunk:
+            expanded_text += prev_chunk["text"]
+            #expanded_text.extend(prev_chunk["text"])
+        expanded_text += doc
+        #expanded_text.extend(doc if isinstance(doc, list) else [doc])
+        if next_chunk:
+            expanded_text.extend(next_chunk["text"])
+            expanded_text += next_chunk["text"]
+        #print("".join(expanded_text))
+
+        expanded_results.append((
+            "".join(expanded_text),
+            score,
+            {
+                **meta,
+                #"prev_chunk_id": prev_chunk["ids"][0] if prev_chunk else None,
+                #"next_chunk_id": next_chunk["ids"][0] if next_chunk else None,
+            }
+        ))
+    return expanded_results
+
 if __name__ == "__main__":
     collection = load_collection()
     encoder = load_encoder()
@@ -73,3 +139,9 @@ if __name__ == "__main__":
     query_vec = encode_query(encoder, query_text)
     results = retrieve_docs(collection, query_vec, top_k=20)
     reranked = query_rerank(reranker, query_text, results, top_n=5)
+
+    expanded_results = expand_with_neighbors(reranked, collection)
+    for doc in expanded_results:
+        print("===")
+        print(doc)
+        print("===")
