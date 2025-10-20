@@ -22,6 +22,20 @@ def encode_query(encoder, query_text):
     """Encode query text into normalized embedding."""
     return encoder.encode_query([query_text], normalize_embeddings=True)
 
+def dedup_by_chapter_event(reranked_docs, max_per_group=1):
+    """de-duplicate when chapterTitle and eventName are identical"""
+    seen = {}
+    deduped = []
+    for doc, score, meta in reranked_docs:
+        key = (meta.get("chapterTitle", ""), meta.get("eventName", ""))
+        if key not in seen:
+            seen[key] = 1
+            deduped.append((doc, score, meta))
+        elif seen[key] < max_per_group:
+            seen[key] += 1
+            deduped.append((doc, score, meta))
+    return deduped
+
 def retrieve_docs(collection, query_vec, top_k=5):
     """Retrieve documents from Chroma collection."""
     results = collection.query(
@@ -148,10 +162,11 @@ def expand_with_neighbors(reranked_docs, collection):
 
     query_text = "乐奈喜欢什么?"
     query_vec = encode_query(encoder, query_text)
-    results = retrieve_docs(collection, query_vec, top_k=20)
-    reranked = query_rerank(reranker, query_text, results, top_n=5)
+    results = retrieve_docs(collection, query_vec, top_k=50)
+    reranked = query_rerank(reranker, query_text, results, top_n=20)
+    deduped = dedup_by_chapter_event(reranked, max_per_group=1)
+    expanded_results = expand_with_neighbors(deduped[:5], collection)
 
-    expanded_results = expand_with_neighbors(reranked, collection)
     for doc in expanded_results:
         print("===")
         print(doc)
