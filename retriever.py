@@ -100,6 +100,11 @@ def find_adjacent_chunks(current_chunk, all_chunks):
             next_chunk = chunk
     return prev_chunk, next_chunk
 
+def safe_to_list(x):
+    if isinstance(x, str):
+        return x.split('\n') if '\n' in x else [x]
+    return list(x)
+
 def expand_with_neighbors(reranked_docs, collection):
     expanded_results = []
     for doc, score, meta in reranked_docs:
@@ -111,17 +116,20 @@ def expand_with_neighbors(reranked_docs, collection):
         prev_chunk, next_chunk = find_adjacent_chunks(meta, all_chunks)
         expanded_text = []
         if prev_chunk:
-            expanded_text += prev_chunk["text"]
+            #expanded_text += prev_chunk["text"]
+            expanded_text += safe_to_list(prev_chunk["text"])
             #expanded_text.extend(prev_chunk["text"])
-        expanded_text += doc
+        #expanded_text += doc
+        expanded_text += safe_to_list(doc)
+
         #expanded_text.extend(doc if isinstance(doc, list) else [doc])
         if next_chunk:
-            expanded_text.extend(next_chunk["text"])
-            expanded_text += next_chunk["text"]
-        #print("".join(expanded_text))
+            #expanded_text.extend(next_chunk["text"])
+            #expanded_text += next_chunk["text"]
+            expanded_text += safe_to_list(next_chunk["text"])
 
         expanded_results.append((
-            "".join(expanded_text),
+            "\n".join(expanded_text),
             score,
             {
                 **meta,
@@ -144,4 +152,5 @@ if __name__ == "__main__":
     for doc in expanded_results:
         print("===")
         print(doc)
+        print(doc[0])
         print("===")
