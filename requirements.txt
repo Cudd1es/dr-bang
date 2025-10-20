@@ -1,0 +1,8 @@
+chromadb==1.2.0
+numpy==2.3.4
+openai==2.5.0
+opensearch_py==3.0.0
+python-dotenv==1.1.1
+sentence_transformers==5.1.1
+torch==2.9.0
+tqdm==4.67.1
