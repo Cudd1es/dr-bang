@@ -45,12 +45,15 @@ def query_rerank(reranker, query, results, top_n=3):
     # get top_n
     reranked_docs = ranked[:top_n]
 
+    """
+    # print result
     print("=== After Rerank ===")
     for i, (doc, score, meta) in enumerate(reranked_docs, 1):
         print(f"Rank {i} | Score: {score:.4f}")
         print(meta)
         print(doc)
         print("-" * 40)
+    """
 
     return reranked_docs
 
@@ -108,7 +111,7 @@ def safe_to_list(x):
 def expand_with_neighbors(reranked_docs, collection):
     expanded_results = []
     for doc, score, meta in reranked_docs:
-        print(meta)
+        #print(meta)
         chapter_title = meta.get("chapterTitle", "")
         event_name = meta.get("eventName", "")
         story_type = meta.get("story_type", None)
@@ -139,7 +142,7 @@ def expand_with_neighbors(reranked_docs, collection):
         ))
     return expanded_results
 
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     collection = load_collection()
     encoder = load_encoder()
 
@@ -153,4 +156,4 @@ if __name__ == "__main__":
         print("===")
         print(doc)
         print(doc[0])
-        print("===")
+        print("===")"""
