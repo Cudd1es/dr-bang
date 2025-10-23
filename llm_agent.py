@@ -47,7 +47,9 @@ def build_rag_prompt(query, context):
     return prompt
 
 def llm_answer(query, expanded_results, model_name=GPT_MODEL):
-    context = expanded_results[0][0] if expanded_results else ""
+    context = []
+    for idx, text in enumerate(expanded_results):
+        context.append(text[0]) if text else ""
     prompt = build_rag_prompt(query, context)
     response = client.chat.completions.create(
         model=model_name,
