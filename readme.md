@@ -94,7 +94,7 @@ requirements.txt   # All Python dependencies
 
 ## Customization & Extensibility & Todo
 
-- Add documents of general Bangdream! background as LLM reference.
+- Add documents of general BangDream! background as LLM reference.
 - To add new story types or other sources, place/merge files in `stories/` and update `chunker.py`.
 - For sparse retrieval, extend `embedder.py`/`retriever.py` as needed (placeholders included).
 
