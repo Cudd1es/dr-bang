@@ -22,6 +22,7 @@ GPT_MODEL="gpt-4o"
 
 def reformulate_query(user_question, model_name=GPT_MODEL):
     prompt = f"""你是一个BangDream知识检索助手。请把用户的问题扩写或转写为适合知识库语义检索的检索语句，涵盖所有可能的提问方式或同义关键词。
+    返回包含所有问题的一个列表
     用户问题：{user_question}
     """
     resp = client.chat.completions.create(
@@ -71,7 +72,7 @@ if __name__ == "__main__":
     # reformulate query
     print("Reformulating...")
     reformulated_query_text = reformulate_query(query_text)
-    print(f"[DEBUG] reformulated query: {reformulated_query_text}")
+    print(f"[DEBUG] reformulated query: \n{reformulated_query_text}")
 
     print("Thinking...\n...")
     # rerank original query
