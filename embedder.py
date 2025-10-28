@@ -169,7 +169,7 @@ def encode_chunks_with_metadata(chunks, dense_encoder, sparse_encoder):
     return result
 
 # save dense embedding to chroma vector database
-def save_chunks_to_chroma(embedded_chunk, collection):
+def save_chunks_to_chroma(embedded_chunk, collection, batch_size=64):
     ids = []
     documents = []
     embeddings = []
@@ -185,7 +185,6 @@ def save_chunks_to_chroma(embedded_chunk, collection):
         meta = {k: v for k, v in entry.items() if k not in ["chunk_id", "dense_embedding","sparse_embedding", "text"]}
         metadata.append(meta)
 
-    batch_size = 64
     for i in range(0, len(ids), batch_size):
         collection.add(
             ids=ids[i:i + batch_size],
@@ -234,7 +233,7 @@ if __name__ == "__main__":
 
         for batch in read_jsonl_in_batches(file_path, batch_size=64):
             embedded = encode_chunks_with_metadata(batch, dense_encoder, sparse_encoder)
-            save_chunks_to_chroma(embedded, chroma_collection)
+            save_chunks_to_chroma(embedded, chroma_collection, batch_size=64)
             pbar.update(len(batch))
         pbar.close()
     end_time = time.time()
