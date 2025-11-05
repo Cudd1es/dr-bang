@@ -110,7 +110,7 @@ requirements.txt   # All Python dependencies
 
 ## License
 
-MIT License.  
+Apache 2.0 License.  
 This project is not affiliated with or endorsed by Bushiroad or the creators of BanG Dream!.
 
 ---
